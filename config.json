@@ -1,0 +1,6 @@
+{
+  "small_blind": 10,
+  "big_blind": 20,
+  "default_chips": 1000,
+  "game_mode": "cash_game"
+}

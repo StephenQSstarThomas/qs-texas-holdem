@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Texas Hold'em - Web UI</title>
+  <style>
+    html,body{height:100%}
+    body{margin:0;background:#0f1419;color:#e5e7eb;font:14px/1.5 system-ui,Segoe UI,Microsoft YaHei,sans-serif}
+    .app{display:grid;grid-template-columns:minmax(260px,22vw) 1fr minmax(320px,28vw);gap:12px;padding:12px}
+    .panel{background:linear-gradient(180deg,#171d24,#1c2430);border:1px solid #2a3745;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.25);overflow:hidden}
+    .players,.controls{padding:12px;display:flex;flex-direction:column;gap:10px}
+    .player{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;background:#111827;border:1px solid #243041;border-radius:10px;padding:8px}
+    .avatar{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 30% 30%,#7dd3fc,#2563eb);font-weight:900}
+    .seat{position:absolute;transform:translate(-50%,-50%);display:grid;grid-template-columns:58px 1fr auto;gap:10px;align-items:center;background:#121a22;border:1px solid #2b3a4a;border-radius:16px;padding:10px 12px;box-shadow:0 16px 36px rgba(0,0,0,.35)}
+    .turn{outline:2px solid #f2c94c;box-shadow:0 0 0 4px rgba(242,201,76,.15),0 16px 36px rgba(0,0,0,.45)}
+    .table-wrap{position:relative;min-height:min(72vh,960px);display:grid;place-items:center;padding:12px}
+    .table{position:relative;width:100%;height:100%;background:radial-gradient(120% 85% at 50% 40%,#174235,#16352a);border-radius:48px/36px;border:6px solid #0a2018;box-shadow:inset 0 0 0 2px #1d4e3b,0 40px 80px rgba(0,0,0,.35)}
+    .community{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);display:flex;gap:min(1.2vw,16px)}
+    .card{width:min(7.2vw,110px);aspect-ratio:64/90;border-radius:10px;background:linear-gradient(180deg,#fff,#f5f5f5);border:2px solid #d7dce3;display:grid;place-items:center;color:#111827;font-weight:900;font-size:clamp(18px,3.2vw,34px);box-shadow:0 4px 20px rgba(0,0,0,.25)}
+    .red{color:#d51e3f}
+    .pot{position:absolute;left:50%;top:55%;transform:translate(-50%,0);display:flex;gap:8px;align-items:center;padding:8px 14px;border-radius:999px;background:#0f1419;border:1px solid #2b3a4a;color:#f2c94c;font-weight:900}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 16px;border-radius:10px;border:1px solid #2b3a4a;background:#121a22;color:#dbeafe;cursor:pointer;font-weight:800}
+    .btn.blue{background:linear-gradient(180deg,#2563eb,#1e40af);border:none}
+    .btn.gray{background:linear-gradient(180deg,#6b7280,#4b5563);border:none}
+    .btn.red{background:linear-gradient(180deg,#f97316,#b45309);border:none}
+    .range{display:flex;align-items:center;gap:8px}
+    .value{min-width:120px;text-align:right;color:#f2c94c;font-weight:900}
+    .hist{max-height:28vh;overflow:auto;border-top:1px dashed #243041;padding-top:8px}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <aside class="panel players" id="players">
+      <!-- 新游戏设置 -->
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px">
+        <div style="font-weight:800;color:#cbd5e1">新游戏</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <label>小盲</label><input id="sb" type="number" value="10" min="1" step="1" style="width:80px;background:#0f1419;color:#e5e7eb;border:1px solid #2a3745;border-radius:6px;padding:4px 6px"/>
+          <label>大盲</label><input id="bb" type="number" value="20" min="2" step="1" style="width:80px;background:#0f1419;color:#e5e7eb;border:1px solid #2a3745;border-radius:6px;padding:4px 6px"/>
+        </div>
+        <div id="playersCfg" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn" id="addP">+ 玩家</button>
+          <button class="btn blue" id="btnNewGame">开始新牌局并发牌</button>
+        </div>
+        <hr style="border:none;border-top:1px dashed #243041"/>
+      </div>
+    </aside>
+    <section class="panel table-wrap">
+      <div class="table" id="table">
+        <div class="community" id="community"></div>
+        <div class="pot" id="pot">奖池: 0</div>
+        <div id="seats"></div>
+      </div>
+    </section>
+    <aside class="panel controls">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn gray" id="fold">弃牌(F)</button>
+        <button class="btn blue" id="call">跟注(Space)</button>
+        <button class="btn red"  id="raise">加注(R)</button>
+        <button class="btn" id="allin" style="background:linear-gradient(180deg,#f59e0b,#b45309);border:none;color:#111827">全押(A)</button>
+      </div>
+      <div class="range">
+        <input id="slider" type="range" min="0" max="2000" value="200" step="10" style="flex:1"/>
+        <div class="value" id="val">¥ 200</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+        <button class="btn" data-q="min">最小</button>
+        <button class="btn" data-q="half">1/2底池</button>
+        <button class="btn" data-q="pot">底池</button>
+        <button class="btn" data-q="double">2x底池</button>
+      </div>
+      <div style="font-size:12px;color:#93c5fd;margin:8px 0" id="debug">状态: 等待</div>
+      <div class="hist" id="hist"></div>
+    </aside>
+  </main>
+
+  <script>
+    // 兼容 file:// 打开时没有 host 的情况，默认使用本机 127.0.0.1
+    const wsHost = (location.hostname && location.hostname.length>0) ? location.hostname : '127.0.0.1';
+    const wsScheme = (location.protocol==='https:'?'wss':'ws');
+    const ws = new WebSocket(`${wsScheme}://${wsHost}:8000/ws`);
+    const $ = (s,p=document)=>p.querySelector(s);
+    const $$ = (s,p=document)=>[...p.querySelectorAll(s)];
+    let currentState = null;
+
+    ws.onopen = ()=> console.log('WebSocket 连接已建立');
+    ws.onclose = ()=> console.log('WebSocket 连接已关闭');
+    ws.onerror = (err)=> console.error('WebSocket 错误:', err);
+
+    ws.onmessage = (ev)=>{
+      const msg = JSON.parse(ev.data);
+      console.log('收到消息:', msg);
+      
+      if(msg.type==='state'){ 
+        currentState = msg.state; 
+        renderAll(); 
+        if(msg.new_game) console.log('✅ 新游戏开始');
+        if(msg.hand_complete) console.log('🏁 一手结束，hand_complete =', msg.hand_complete);
+        if(msg.hand_started) console.log('🃏 新一手开始');
+        if(msg.game_restarted) console.log('🔄 游戏已重启');
+        if(msg.game_over) {
+          console.log('💀 游戏结束，game_over =', msg.game_over);
+        }
+      }
+      else if(msg.type==='ask_continue') {
+        console.log('❓ 收到询问是否继续的消息');
+        showContinueDialog();
+      }
+      else if(msg.type==='ask_restart_or_exit') {
+        console.log('❓ 收到询问重新开始或退出的消息');
+        showRestartOrExitDialog();
+      }
+      else if(msg.type==='game_exit') {
+        alert('游戏已退出');
+        window.close();
+      }
+      else if(msg.type==='message') {
+        console.log('Server:', msg.text);
+      }
+    };
+
+    function renderAll(){
+      renderPlayers(); renderCommunity(); renderSeats(); renderControls();
+      $('#pot').textContent = '奖池: '+(currentState?.pot_size||0);
+      
+      // 更新调试信息
+      const phase = currentState?.game_phase || currentState?.phase || '未知';
+      const currentPlayer = currentState?.current_player_index;
+      const playerName = currentState?.players?.[currentPlayer]?.name || '无';
+      $('#debug').textContent = `阶段: ${phase} | 当前: ${playerName}`;
+    }
+
+    function renderPlayers(){
+      const root = $('#players');
+      // 保留上方设置表单
+      const settings = root.children[0].cloneNode(true);
+      root.innerHTML=''; root.appendChild(settings);
+      
+      // 渲染玩家列表
+      const playersDiv = document.createElement('div');
+      playersDiv.id = 'playersList';
+      (currentState?.players||[]).forEach((p,i)=>{
+        const div=document.createElement('div');
+        div.className='player';
+        
+        // 根据玩家状态设置颜色和样式
+        const isCurrentPlayer = i === currentState?.current_player_index;
+        const statusColor = p.status === 'active' ? '#22c55e' : 
+                           p.status === 'folded' ? '#ef4444' : 
+                           p.status === 'all_in' ? '#f59e0b' : '#6b7280';
+        const statusText = p.status === 'active' ? '活跃' : 
+                          p.status === 'folded' ? '弃牌' : 
+                          p.status === 'all_in' ? '全押' : '等待';
+        
+        const dot = `<div style="width:10px;height:10px;border-radius:50%;background:${statusColor}" title="${statusText}"></div>`;
+        
+        // 弃牌玩家的手牌不显示
+        const hole = (p.hole_cards||[]).join(' ');
+        let holeHtml = '';
+        if (hole && p.status !== 'folded') {
+          holeHtml = `<div style='font-size:12px;color:${isCurrentPlayer ? '#fbbf24' : '#93c5fd'}'>手牌: ${isCurrentPlayer ? hole : '🂠 🂠'}</div>`;
+        } else if (p.status === 'folded') {
+          holeHtml = `<div style='font-size:12px;color:#6b7280;text-decoration:line-through'>已弃牌</div>`;
+        }
+        
+        // 弃牌玩家整体样式变暗
+        const playerStyle = p.status === 'folded' ? 'opacity:0.6;' : '';
+        div.style.cssText = playerStyle;
+        
+        div.innerHTML=`<div class='avatar'>${p.name[0]}</div><div><div style='font-weight:800'>${p.name}</div><div style='color:#f2c94c;font-weight:900'>¥ ${p.chips}</div>${holeHtml}</div>${dot}`;
+        playersDiv.appendChild(div);
+      });
+      root.appendChild(playersDiv);
+      
+      // 重新挂载设置区域的事件
+      attachNewGameForm();
+    }
+
+    function renderCommunity(){
+      const c = $('#community'); c.innerHTML='';
+      (currentState?.community_cards||[]).forEach(txt=>{
+        const red = /[♥♦]$/.test(txt);
+        const card=document.createElement('div'); card.className='card'+(red?' red':''); card.textContent=txt; c.appendChild(card);
+      });
+    }
+
+    function renderSeats(){
+      const layer = $('#seats'); layer.innerHTML='';
+      const tableRect = $('#table').getBoundingClientRect();
+      const cx = tableRect.width/2, cy = tableRect.height/2; const rx = tableRect.width*0.36, ry = tableRect.height*0.33;
+      const players=currentState?.players||[]; const n = Math.max(players.length,2);
+      const angles=[...Array(n)].map((_,k)=>Math.PI*(0.5+2*k/n));
+      players.forEach((p,i)=>{
+        const a=angles[i]; const x=cx+rx*Math.cos(a); const y=cy+ry*Math.sin(a);
+        const seat=document.createElement('div'); seat.className='seat';
+        
+        // 当前玩家高亮，弃牌玩家变暗
+        if(i===currentState?.current_player_index && p.status !== 'folded') {
+          seat.classList.add('turn');
+        }
+        if(p.status === 'folded') {
+          seat.style.opacity = '0.5';
+          seat.style.filter = 'grayscale(50%)';
+        }
+        
+        seat.style.left=x+'px'; seat.style.top=y+'px';
+        const dealer = (i===currentState?.dealer_position)?'<div style="width:26px;height:26px;border-radius:50%;background:#fff;color:#111;display:grid;place-items:center;font-weight:900">D</div>':'';
+        
+        // 根据玩家状态显示手牌
+        const hole = (p.hole_cards||[]).join(' ');
+        let holeHtml = '';
+        if (hole && p.status !== 'folded') {
+          const isCurrentPlayer = i === currentState?.current_player_index;
+          holeHtml = `<div style='margin-top:6px;color:${isCurrentPlayer?'#fbbf24':'#9ca3af'};font-weight:700'>${isCurrentPlayer ? hole : '🂠 🂠'}</div>`;
+        } else if (p.status === 'folded') {
+          holeHtml = `<div style='margin-top:6px;color:#6b7280;font-weight:700;text-decoration:line-through'>弃牌</div>`;
+        }
+        
+        seat.innerHTML=`<div class='avatar'>${p.name[0]}</div><div><div style='font-weight:900;font-size:18px'>${p.name}</div><div style='color:#f2c94c;font-weight:900'>¥ ${p.chips}</div>${holeHtml}</div><div>${dealer}</div>`;
+        layer.appendChild(seat);
+      })
+    }
+
+    function renderControls(){
+      const acts = new Set(currentState?.valid_actions||[]);
+      
+      // 调试信息
+      console.log(`🎮 渲染控制面板，有效动作:`, Array.from(acts));
+      
+      // 如果没有有效动作，说明可能出现了问题
+      if (acts.size === 0 && currentState?.players) {
+        console.warn('⚠️  没有有效动作，检查当前玩家状态');
+        const currentPlayer = currentState.players[currentState.current_player_index];
+        if (currentPlayer) {
+          console.log(`当前玩家: ${currentPlayer.name}, 状态: ${currentPlayer.status}`);
+          if (currentPlayer.status === 'folded') {
+            console.log('🔴 当前玩家已弃牌，应该自动跳过');
+            // 发送一个检查请求来触发服务器端的玩家切换
+            setTimeout(() => {
+              ws.send(JSON.stringify({type: 'check_current_player'}));
+            }, 100);
+          }
+        }
+      }
+      
+      // 检查弃牌按钮状态
+      const foldDisabled = !acts.has('fold');
+      console.log(`🔴 弃牌按钮${foldDisabled ? '禁用' : '启用'}`);
+      
+      $('#fold').disabled = foldDisabled;
+      $('#call').disabled = !(acts.has('call') || acts.has('check'));
+      $('#raise').disabled = !acts.has('raise');
+      $('#allin').disabled = !acts.has('all_in');
+
+      if(acts.has('check')){
+        $('#call').textContent = '过牌(C)';
+        $('#call').title = '无需跟注';
+      }else{
+        $('#call').textContent = '跟注(Space)';
+        $('#call').title = '需要跟注: ¥'+(currentState?.to_call||0);
+      }
+
+      // 更新加注滑块
+      const currentBet = currentState?.current_bet || 0;
+      const minRaise = currentState?.min_raise || currentState?.big_blind || 20;
+      const minTotal = currentBet + minRaise;
+      const maxTotal = Math.max(minTotal, (currentState?.pot_size||0)*2);
+      
+      const slider = $('#slider'); 
+      slider.min = minTotal; 
+      slider.max = maxTotal; 
+      slider.step = Math.max(10, Math.ceil((maxTotal-minTotal)/50));
+      
+      if(Number(slider.value) < minTotal){ 
+        slider.value = minTotal; 
+        $('#val').textContent = '¥ '+Number(slider.value).toLocaleString(); 
+      }
+    }
+
+    // actions
+    $('#slider').addEventListener('input', e=> $('#val').textContent='¥ '+Number(e.target.value).toLocaleString());
+    $$('#fold,#call,#raise,#allin').forEach(btn=>btn.addEventListener('click',onAction));
+    $$('[data-q]').forEach(b=>b.addEventListener('click',()=>quickBet(b.dataset.q)));
+
+    function onAction(e){
+      const id=e.target.id; let msg={type:'action'};
+      
+      console.log(`🎯 点击了按钮: ${id}`);
+      console.log(`📊 当前有效动作:`, currentState?.valid_actions);
+      
+      if(id==='fold') {
+        msg.action='fold';
+        console.log('🔴 发送弃牌动作');
+      }
+      if(id==='call'){
+        const acts = new Set(currentState?.valid_actions||[]);
+        msg.action = acts.has('check') ? 'check' : 'call';
+        console.log(`💰 发送 ${msg.action} 动作`);
+      }
+      if(id==='raise'){ 
+        msg.action='raise'; 
+        msg.amount=Number($('#slider').value)||0; 
+        console.log(`📈 发送加注动作，金额: ${msg.amount}`);
+      }
+      if(id==='allin') {
+        msg.action='all_in';
+        console.log('🔥 发送全押动作');
+      }
+      
+      console.log('📤 发送消息:', msg);
+      ws.send(JSON.stringify(msg));
+    }
+    function quickBet(t){
+      const pot = currentState?.pot_size||0; let v=0;
+      if(t==='min') v = (currentState?.current_bet||0) + (currentState?.min_raise|| (currentState?.big_blind||20));
+      if(t==='half') v = Math.round(pot/2);
+      if(t==='pot') v = pot;
+      if(t==='double') v = pot*2;
+      $('#slider').value=v; $('#val').textContent='¥ '+v.toLocaleString();
+    }
+
+    // 新游戏配置 UI
+    function attachNewGameForm(){
+      const wrap = $('#playersCfg'); 
+      if(!wrap) return; // 防止重复调用时 wrap 不存在
+      wrap.innerHTML='';
+      
+      const makeRow = (name, chips)=>{
+        const row = document.createElement('div');
+        row.style.display='flex'; row.style.gap='6px'; row.style.alignItems='center';
+        row.innerHTML = `
+          <input placeholder='玩家名' value='${name}' style="flex:1;background:#0f1419;color:#e5e7eb;border:1px solid #2a3745;border-radius:6px;padding:4px 6px"/>
+          <input type='number' value='${chips}' min='100' step='50' style="width:90px;background:#0f1419;color:#e5e7eb;border:1px solid #2a3745;border-radius:6px;padding:4px 6px"/>
+          <button class='btn' title='删除'>－</button>
+        `;
+        row.querySelector('button').onclick = ()=> row.remove();
+        wrap.appendChild(row);
+      };
+      // 默认两人
+      makeRow('Alice', 1000); makeRow('Bob', 1000);
+      
+      // 重新绑定按钮事件
+      const addBtn = $('#addP');
+      const newGameBtn = $('#btnNewGame');
+      
+      if(addBtn) {
+        addBtn.onclick = ()=>{
+          const rows = $$('#playersCfg > div');
+          if(rows.length>=9) return alert('最多9人');
+          const idx = rows.length+1; const name = 'P'+idx;
+          const row = document.createElement('div'); 
+          row.style.display='flex'; row.style.gap='6px'; row.style.alignItems='center';
+          row.innerHTML = `
+            <input placeholder='玩家名' value='${name}' style="flex:1;background:#0f1419;color:#e5e7eb;border:1px solid #2a3745;border-radius:6px;padding:4px 6px"/>
+            <input type='number' value='1000' min='100' step='50' style="width:90px;background:#0f1419;color:#e5e7eb;border:1px solid #2a3745;border-radius:6px;padding:4px 6px"/>
+            <button class='btn' title='删除'>－</button>`;
+          row.querySelector('button').onclick = ()=> row.remove();
+          $('#playersCfg').appendChild(row);
+        };
+      }
+      
+      if(newGameBtn) {
+        newGameBtn.onclick = ()=>{
+          console.log('新游戏按钮被点击');
+          
+          if(ws.readyState !== WebSocket.OPEN) {
+            alert('WebSocket 连接未建立，请刷新页面重试');
+            return;
+          }
+          
+          const players = $$('#playersCfg > div').map(row=>{
+            const [nameI, chipsI] = row.querySelectorAll('input');
+            return {name:nameI.value.trim()||'P', chips:Number(chipsI.value)||1000};
+          }).filter(p=>p.name && p.name !== 'P');
+          
+          console.log('解析到的玩家:', players);
+          
+          if(players.length < 2) {
+            alert('至少需要2名玩家');
+            return;
+          }
+          
+          const cfg = { 
+            small_blind:Number($('#sb').value)||10, 
+            big_blind:Number($('#bb').value)||20, 
+            players 
+          };
+          console.log('发送新游戏配置:', cfg);
+          ws.send(JSON.stringify({type:'new_game', config: cfg}));
+        };
+      }
+    }
+    
+    // 对话框函数
+    function showContinueDialog() {
+      console.log('🔔 showContinueDialog 被调用');
+      
+      // 显示当前筹码状况
+      let chipsInfo = '🎉 一轮游戏结束！\n\n当前筹码状况：\n';
+      if (currentState?.players) {
+        currentState.players.forEach(p => {
+          chipsInfo += `${p.name}: ¥${p.chips.toLocaleString()}\n`;
+        });
+      }
+      chipsInfo += '\n是否继续下一轮？';
+      
+      const result = confirm(chipsInfo + '\n\n点击"确定"继续下一轮\n点击"取消"选择重新开始或退出');
+      console.log('👤 用户选择结果:', result ? '继续' : '停止');
+      
+      if (result) {
+        // 继续下一轮
+        ws.send(JSON.stringify({type: 'continue_game'}));
+      } else {
+        // 询问重新开始或退出
+        ws.send(JSON.stringify({type: 'ask_restart_or_exit'}));
+      }
+    }
+
+    function showRestartOrExitDialog() {
+      console.log('🔔 showRestartOrExitDialog 被调用');
+      
+      const result = confirm('🏁 游戏结束！选择下一步操作：\n\n点击"确定"重新开始（重置筹码）\n点击"取消"退出游戏');
+      console.log('👤 用户选择结果:', result ? '重新开始' : '退出');
+      
+      if (result) {
+        // 重新开始游戏
+        ws.send(JSON.stringify({type: 'restart_game'}));
+      } else {
+        // 退出游戏
+        if (confirm('确定要退出游戏吗？')) {
+          ws.send(JSON.stringify({type: 'exit_game'}));
+        } else {
+          // 用户取消退出，重新显示选择对话框
+          showRestartOrExitDialog();
+        }
+      }
+    }
+
+    // 创建更美观的自定义对话框（可选）
+    function createCustomDialog(title, message, buttons) {
+      // 创建遮罩层
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.7); z-index: 1000; display: flex;
+        align-items: center; justify-content: center;
+      `;
+      
+      // 创建对话框
+      const dialog = document.createElement('div');
+      dialog.style.cssText = `
+        background: #1f2937; border-radius: 12px; padding: 24px;
+        min-width: 320px; max-width: 500px; color: #e5e7eb;
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
+      `;
+      
+      dialog.innerHTML = `
+        <h3 style="margin: 0 0 16px 0; color: #fbbf24; font-size: 18px;">${title}</h3>
+        <p style="margin: 0 0 20px 0; line-height: 1.5; color: #d1d5db;">${message}</p>
+        <div style="display: flex; gap: 12px; justify-content: flex-end;">
+          ${buttons.map((btn, i) => `
+            <button onclick="handleDialogClick(${i})" style="
+              padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer;
+              background: ${btn.primary ? '#2563eb' : '#6b7280'}; color: white;
+              font-weight: 500; transition: all 0.2s;
+            " onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
+              ${btn.text}
+            </button>
+          `).join('')}
+        </div>
+      `;
+      
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+      
+      return new Promise(resolve => {
+        window.handleDialogClick = (index) => {
+          document.body.removeChild(overlay);
+          delete window.handleDialogClick;
+          resolve(index);
+        };
+      });
+    }
+
+    // 初始化配置表单
+    attachNewGameForm();
+  </script>
+</body>
+</html>
+
+
